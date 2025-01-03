@@ -75,45 +75,78 @@ function formatTime(seconds) {
 }
 
 async function playStation(url, stationName) {
+    const player = document.getElementById('radioPlayer');
+    const currentTimeDisplay = document.getElementById('currentTime');
     document.getElementById('nowPlaying').textContent = `Se încarcă ${stationName}...`;
-    if (url.endsWith('.m3u') || url.endsWith('.pls')) {
-        const response = await fetch(url);
-        const text = await response.text();
-        let streamUrl;
+    try {
+        if (url.endsWith('.m3u') || url.endsWith('.pls') || url.endsWith('.m3u8')) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.statusText}`);
+            }
+            const text = await response.text();
+            let streamUrl;
 
-        if (url.endsWith('.m3u')) {
-            streamUrl = text.split('\n').find(line => line && !line.startsWith('#'));
-        } else if (url.endsWith('.pls')) {
-            const lines = text.split('\n');
-            for (let line of lines) {
-                if (line.toLowerCase().startsWith('file1=')) {
-                    streamUrl = line.split('=')[1].trim();
-                    break;
+            if (url.endsWith('.m3u') || url.endsWith('.m3u8')) {
+                streamUrl = text.split('\n').find(line => line && !line.startsWith('#'));
+            } else if (url.endsWith('.pls')) {
+                const lines = text.split('\n');
+                for (let line of lines) {
+                    if (line.toLowerCase().startsWith('file1=')) {
+                        streamUrl = line.split('=')[1].trim();
+                        break;
+                    }
                 }
             }
-        }
 
-        if (streamUrl) {
-            player.src = streamUrl;
+            if (streamUrl) {
+                if (url.endsWith('.m3u8')) {
+                    if (Hls.isSupported()) {
+                        const hls = new Hls();
+                        hls.loadSource(streamUrl);
+                        hls.attachMedia(player);
+                        hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                            player.play();
+                        });
+                    } else if (player.canPlayType('application/vnd.apple.mpegurl')) {
+                        player.src = streamUrl;
+                        player.addEventListener('loadedmetadata', function () {
+                            player.play();
+                        });
+                    }
+                } else {
+                    player.src = streamUrl;
+                    await player.play();
+                }
+            } else {
+                console.error('Stream URL could not be found in the playlist.');
+                alert('URL-ul stației nu poate fi accesat.');
+                return;
+            }
         } else {
-            console.error('URL-ul stației nu poate fi accesat.');
-            alert('URL-ul stației nu poate fi accesat.');
-            return;
+            player.src = url;
+            await player.play();
         }
-    } else {
-        player.src = url;
-    }
 
-    player.crossOrigin = "anonymous";
+        player.crossOrigin = "anonymous";
+        playPauseBtn.textContent = 'Pauză';
+        document.getElementById('nowPlaying').textContent = `Se redă: ${stationName}`;
+        if (!audioContext) {
+            audioContext = new AudioContext();
+            initializeVisualizer();
+        } else if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
 
-    await player.play();
-    playPauseBtn.textContent = 'Pauză';
-    document.getElementById('nowPlaying').textContent = `Se redă: ${stationName}`;
-    if (!audioContext) {
-        audioContext = new AudioContext();
-        initializeVisualizer();
-    } else if (audioContext.state === 'suspended') {
-        await audioContext.resume();
+        // Reset the timer when playback starts
+        player.addEventListener('play', function () {
+            currentTimeDisplay.textContent = '0:00';
+        });
+
+    } catch (error) {
+        console.error('Error accessing the station URL:', error);
+        alert('URL-ul stației nu poate fi accesat.');
+        playPauseBtn.textContent = 'Redare';
     }
 }
 
