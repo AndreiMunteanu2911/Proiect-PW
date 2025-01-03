@@ -12,11 +12,11 @@ let dataArray;
 let bufferLength;
 
 window.onload = function() {
-    // Get the canvas context
+
     const canvas = document.getElementById('visualizer');
     const canvasCtx = canvas.getContext('2d');
 
-    // Fill the canvas with black
+
     canvasCtx.fillStyle = 'rgb(0, 0, 0)';
     canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 };
@@ -24,10 +24,10 @@ window.onload = function() {
 playPauseBtn.addEventListener('click', async () => {
     if (player.paused) {
         await player.play();
-        playPauseBtn.textContent = 'Pause';
+        playPauseBtn.textContent = 'Pauză';
     } else {
         player.pause();
-        playPauseBtn.textContent = 'Play';
+        playPauseBtn.textContent = 'Redare';
     }
 });
 
@@ -40,8 +40,8 @@ player.addEventListener('loadedmetadata', () => {
 });
 
 player.addEventListener('error', () => {
-    alert('Error loading the audio stream. Please try another station.');
-    playPauseBtn.textContent = 'Play';
+    alert('URL-ul stației nu poate fi accesat.');
+    playPauseBtn.textContent = 'Redare';
 });
 
 volumeControl.addEventListener('input', () => {
@@ -75,7 +75,7 @@ function formatTime(seconds) {
 }
 
 async function playStation(url, stationName) {
-    document.getElementById('nowPlaying').textContent = `Loading ${stationName}...`;
+    document.getElementById('nowPlaying').textContent = `Se încarcă ${stationName}...`;
     if (url.endsWith('.m3u') || url.endsWith('.pls')) {
         const response = await fetch(url);
         const text = await response.text();
@@ -96,26 +96,24 @@ async function playStation(url, stationName) {
         if (streamUrl) {
             player.src = streamUrl;
         } else {
-            console.error('Stream URL not found in playlist');
-            alert('Stream URL not found. Please try another station.');
+            console.error('URL-ul stației nu poate fi accesat.');
+            alert('URL-ul stației nu poate fi accesat.');
             return;
         }
     } else {
         player.src = url;
     }
 
-    player.crossOrigin = "anonymous"; // Set crossOrigin attribute
+    player.crossOrigin = "anonymous";
 
     await player.play();
-    playPauseBtn.textContent = 'Pause';
-    document.getElementById('nowPlaying').textContent = `Now Playing: ${stationName}`;
+    playPauseBtn.textContent = 'Pauză';
+    document.getElementById('nowPlaying').textContent = `Se redă: ${stationName}`;
     if (!audioContext) {
         audioContext = new AudioContext();
-        console.log('AudioContext created');
         initializeVisualizer();
     } else if (audioContext.state === 'suspended') {
         await audioContext.resume();
-        console.log('AudioContext resumed');
     }
 }
 
@@ -128,7 +126,7 @@ function initializeVisualizer() {
     bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
 
-    // Fill the canvas with black when initializing the visualizer
+
     canvasCtx.fillStyle = 'rgb(0, 0, 0)';
     canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
