@@ -1,7 +1,6 @@
 const player = document.getElementById('radioPlayer');
 const playPauseBtn = document.getElementById('playPauseBtn');
 const currentTimeElem = document.getElementById('currentTime');
-const durationElem = document.getElementById('duration');
 const volumeControl = document.getElementById('volumeControl');
 const volumeIcon = document.querySelector('#audioPlayer img');
 const canvas = document.getElementById('visualizer');
@@ -10,12 +9,13 @@ let audioContext;
 let analyser;
 let dataArray;
 let bufferLength;
+let currentStationRequest = null;
+const maxRetries = 5;
+const retryDelay = 2000; // 2 seconds
 
 window.onload = function() {
-
     const canvas = document.getElementById('visualizer');
     const canvasCtx = canvas.getContext('2d');
-
 
     canvasCtx.fillStyle = 'rgb(0, 0, 0)';
     canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -32,16 +32,21 @@ playPauseBtn.addEventListener('click', async () => {
 });
 
 player.addEventListener('timeupdate', () => {
-    currentTimeElem.textContent = formatTime(player.currentTime);
+    let currentTime = player.currentTime;
+    if (document.getElementById('nowPlaying').textContent.includes('Radio Zu')) {
+        currentTime = Math.max(0, currentTime - 34);
+    }
+    currentTimeElem.textContent = formatTime(currentTime);
 });
 
-player.addEventListener('loadedmetadata', () => {
-    durationElem.textContent = formatTime(player.duration);
-});
-
-player.addEventListener('error', () => {
-    alert('URL-ul stației nu poate fi accesat.');
-    playPauseBtn.textContent = 'Redare';
+player.addEventListener('error', (e) => {
+    const error = player.error;
+    if (error) {
+        console.error('Audio element error:', error);
+        alert('URL-ul stației nu poate fi accesat.');
+        playPauseBtn.textContent = 'Redare';
+    }
+    console.log("Test1");
 });
 
 volumeControl.addEventListener('input', () => {
@@ -74,15 +79,23 @@ function formatTime(seconds) {
     return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
-async function playStation(url, stationName) {
+async function playStation(url, stationName, retries = 0) {
     const player = document.getElementById('radioPlayer');
     const currentTimeDisplay = document.getElementById('currentTime');
     document.getElementById('nowPlaying').textContent = `Se încarcă ${stationName}...`;
+
+    if (currentStationRequest) {
+        currentStationRequest.abort();
+    }
+
+    currentStationRequest = new AbortController();
+    const { signal } = currentStationRequest;
+
     try {
         if (url.endsWith('.m3u') || url.endsWith('.pls') || url.endsWith('.m3u8')) {
-            const response = await fetch(url);
+            const response = await fetch(url, { signal });
             if (!response.ok) {
-                throw new Error(`Network response was not ok: ${response.statusText}`);
+                throw new Error(`Eroare network: ${response.statusText}`);
             }
             const text = await response.text();
             let streamUrl;
@@ -105,6 +118,7 @@ async function playStation(url, stationName) {
                         const hls = new Hls();
                         hls.loadSource(streamUrl);
                         hls.attachMedia(player);
+
                         hls.on(Hls.Events.MANIFEST_PARSED, function () {
                             player.play();
                         });
@@ -119,9 +133,8 @@ async function playStation(url, stationName) {
                     await player.play();
                 }
             } else {
-                console.error('Stream URL could not be found in the playlist.');
-                alert('URL-ul stației nu poate fi accesat.');
-                return;
+                throw new Error('URL-ul stației nu poate fi accesat.');
+                console.log("Test2");
             }
         } else {
             player.src = url;
@@ -138,15 +151,24 @@ async function playStation(url, stationName) {
             await audioContext.resume();
         }
 
-        // Reset the timer when playback starts
         player.addEventListener('play', function () {
-            currentTimeDisplay.textContent = '0:00';
+            currentTimeDisplay.textContent = formatTime(player.currentTime);
         });
 
     } catch (error) {
-        console.error('Error accessing the station URL:', error);
-        alert('URL-ul stației nu poate fi accesat.');
-        playPauseBtn.textContent = 'Redare';
+        if (error.name !== 'AbortError') {
+            console.error('Error accessing the station URL:', error);
+            if (retries < maxRetries) {
+                console.log(`Retrying... (${retries + 1}/${maxRetries})`);
+                setTimeout(() => playStation(url, stationName, retries + 1), retryDelay);
+            } else {
+                alert('URL-ul stației nu poate fi accesat.');
+                playPauseBtn.textContent = 'Redare';
+                console.log("Test3");
+            }
+        }
+    } finally {
+        currentStationRequest = null;
     }
 }
 
@@ -158,7 +180,6 @@ function initializeVisualizer() {
     analyser.fftSize = 128;
     bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
-
 
     canvasCtx.fillStyle = 'rgb(0, 0, 0)';
     canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -178,7 +199,7 @@ function drawVisualizer() {
 
     for (let i = 0; i < bufferLength; i++) {
         barHeight = dataArray[i];
-        canvasCtx.fillStyle = '#FFD700'; // Set the bar color to the same as the footer and header
+        canvasCtx.fillStyle = '#FFD700';
         canvasCtx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
         x += barWidth + 1;
     }
